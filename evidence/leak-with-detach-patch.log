@@ -1,0 +1,51 @@
+[probe] --- didBeginEditing ---
+[probe] UITextField()@0x00000001103a8000 firstResponder=true inputAccessoryView=nil
+[probe] keyboardHeight=308.00 (willChangeFrame)
+[probe] keyboardHeight=308.00 (willShow)
+[probe] --- keyboardDidShow ---
+[probe] UITextField()@0x00000001103a8000 firstResponder=true inputAccessoryView=nil
+[probe] keyboardHeight=0.00 (willChangeFrame)
+[probe] RCTTextInput init field=0x1278fc500
+[probe] RCTTextInput init field=0x1278fca00
+[probe] --- didBeginEditing ---
+[probe] UITextField(Input A)@0x00000001278fc500 firstResponder=true inputAccessoryView=nil
+[probe] UITextField(Input B)@0x00000001278fca00 firstResponder=false inputAccessoryView=nil
+[probe] extender handleDidBeginEditing self=0x116407100 enabled=1 input=0x1278fc500
+[probe] keyboardHeight=379.00 (willChangeFrame)
+[probe] keyboardHeight=379.00 (willShow)
+[probe] --- keyboardDidShow ---
+[probe] UITextField(Input A)@0x00000001278fc500 firstResponder=true inputAccessoryView=ModernContainerView@0x00000001279e4900 frame=(0.0, 0.0, 393.0, 44.0) subviews=3 contentViews=3
+[probe] UITextField(Input B)@0x00000001278fca00 firstResponder=false inputAccessoryView=nil
+[probe] --- didBeginEditing ---
+[probe] UITextField(Input A)@0x00000001278fc500 firstResponder=false inputAccessoryView=ModernContainerView@0x00000001279e4900 frame=(0.0, 0.0, 393.0, 44.0) subviews=3 contentViews=3
+[probe] UITextField(Input B)@0x00000001278fca00 firstResponder=true inputAccessoryView=nil
+[probe] extender handleDidBeginEditing self=0x116407100 enabled=1 input=0x1278fca00
+[probe] keyboardHeight=379.00 (willChangeFrame)
+[probe] keyboardHeight=379.00 (willShow)
+[probe] --- keyboardDidShow ---
+[probe] UITextField(Input A)@0x00000001278fc500 firstResponder=false inputAccessoryView=ModernContainerView@0x00000001279e4900 frame=(0.0, 0.0, 393.0, 44.0) subviews=3 contentViews=3
+[probe] UITextField(Input B)@0x00000001278fca00 firstResponder=true inputAccessoryView=ModernContainerView@0x00000001279e4900 frame=(0.0, 0.0, 393.0, 44.0) subviews=3 contentViews=3
+[probe] RCTTextInput init field=0x1278fe300
+[probe] --- didBeginEditing ---
+[probe] UITextField(Input A)@0x00000001278fc500 firstResponder=false inputAccessoryView=ModernContainerView@0x00000001279e4900 frame=(0.0, 0.0, 393.0, 44.0) subviews=3 contentViews=3
+[probe] UITextField(Input B)@0x00000001278fca00 firstResponder=false inputAccessoryView=ModernContainerView@0x00000001279e4900 frame=(0.0, 0.0, 393.0, 44.0) subviews=3 contentViews=3
+[probe] UITextField(Input C)@0x00000001278fe300 firstResponder=true inputAccessoryView=nil
+[probe] extender handleDidBeginEditing self=0x116407100 enabled=1 input=0x1278fe300
+[probe] keyboardHeight=379.00 (willChangeFrame)
+[probe] keyboardHeight=379.00 (willShow)
+[probe] --- keyboardDidShow ---
+[probe] UITextField(Input A)@0x00000001278fc500 firstResponder=false inputAccessoryView=ModernContainerView@0x00000001279e4900 frame=(0.0, 0.0, 393.0, 44.0) subviews=3 contentViews=3
+[probe] UITextField(Input B)@0x00000001278fca00 firstResponder=false inputAccessoryView=ModernContainerView@0x00000001279e4900 frame=(0.0, 0.0, 393.0, 44.0) subviews=3 contentViews=3
+[probe] UITextField(Input C)@0x00000001278fe300 firstResponder=true inputAccessoryView=ModernContainerView@0x00000001279e4900 frame=(0.0, 0.0, 393.0, 44.0) subviews=3 contentViews=3
+[probe] keyboardHeight=379.00 (willChangeFrame)
+[probe] --- didBeginEditing ---
+[probe] UITextField(Input A)@0x00000001278fc500 firstResponder=false inputAccessoryView=ModernContainerView@0x00000001279e4900 frame=(0.0, 0.0, 393.0, 44.0) subviews=3 contentViews=3
+[probe] UITextField(Input B)@0x00000001278fca00 firstResponder=false inputAccessoryView=ModernContainerView@0x00000001279e4900 frame=(0.0, 0.0, 393.0, 44.0) subviews=3 contentViews=3
+[probe] UITextField(Input C)@0x00000001278fe300 firstResponder=true inputAccessoryView=ModernContainerView@0x00000001279e4900 frame=(0.0, 0.0, 393.0, 44.0) subviews=3 contentViews=3
+[probe] extender handleDidBeginEditing self=0x116407100 enabled=1 input=0x1278fe300
+[probe] keyboardHeight=379.00 (willChangeFrame)
+[probe] keyboardHeight=379.00 (willShow)
+[probe] --- keyboardDidShow ---
+[probe] UITextField(Input A)@0x00000001278fc500 firstResponder=false inputAccessoryView=ModernContainerView@0x00000001279e4900 frame=(0.0, 0.0, 393.0, 44.0) subviews=3 contentViews=3
+[probe] UITextField(Input B)@0x00000001278fca00 firstResponder=false inputAccessoryView=ModernContainerView@0x00000001279e4900 frame=(0.0, 0.0, 393.0, 44.0) subviews=3 contentViews=3
+[probe] UITextField(Input C)@0x00000001278fe300 firstResponder=true inputAccessoryView=ModernContainerView@0x00000001279e4900 frame=(0.0, 0.0, 393.0, 44.0) subviews=3 contentViews=3

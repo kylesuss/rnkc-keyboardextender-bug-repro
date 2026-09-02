@@ -1,15 +1,22 @@
-# `KeyboardExtender` accessory leak — react-native-keyboard-controller 1.22.4
+# `KeyboardExtender` attaches its accessory to inputs on other screens
 
-Minimal RN app reproducing, on a physical device, two separate defects around
-`KeyboardExtenderManager`'s `inputAccessoryView` handling.
+react-native-keyboard-controller **1.22.4**, iOS, new architecture.
 
-| | **Bug A — inflated keyboard frame** | **Bug B — stale empty container** |
-| --- | --- | --- |
-| Symptom | Keyboard frame reports 44pt too tall on a screen with no extender; anything positioned off keyboard height sits that much too high | An input presents a container the extender has already emptied |
-| Probe | `[probe] keyboardHeight=…` | `[probe] … EMPTY-CONTAINER` |
-| Reproduced on | iPhone 16, iOS 26.5 | iPhone 16, iOS 26.5 |
+`KeyboardExtenderManager` observes `UITextFieldTextDidBeginEditingNotification`
+with `object:nil` — every text input in the process — and attaches its shared
+accessory container to whichever input begins editing, as long as `enabled` is
+`YES`.
 
-## Run it
+Nothing scopes that to the extender's own screen. In a navigation stack the
+screen underneath stays mounted, so its extender is still alive and still
+observing. Focus an input on the screen pushed on top and the bar is attached to
+it, even though that screen has no `KeyboardExtender` at all.
+
+The keyboard frame then reports the extra bar height. Anything positioned off
+keyboard height — a fixed footer, a sticky button — sits that much too high, and
+stays there.
+
+## Reproduction
 
 ```sh
 cd RnkcRepro
@@ -19,101 +26,79 @@ npm start                 # one shell
 npm run ios               # another — or build to a device from Xcode
 ```
 
-Device builds need your own signing team; nothing team-specific is committed here.
+`App.tsx` plays the sequence by itself ~1.5s after launch:
 
-The app plays a scenario by itself ~1.5s after launch (`AUTO_RUN` / `SCENARIO` in
-`App.tsx`). Watch the probes:
+1. Focus **Input A** on the Editor screen, which has a `KeyboardExtender`.
+2. Push **Settings**, which has no extender. Editor stays mounted underneath.
+3. Focus **Input C** on Settings.
+
+The footer on Settings is positioned off the reported keyboard height. It sits a
+bar's height above the keyboard instead of flush against it, and stays wrong on
+every later focus.
+
+Set `SCENARIO = 'control'` for the same navigation with the extender never
+mounted.
+
+## Measurements
+
+iPhone 16, iOS 26.5. Bar is 44pt.
+
+| | Reported keyboard height |
+| --- | --- |
+| `control` — no extender mounted | **335.00** |
+| `leak` — extender mounted on the screen below | **379.00** |
+
+`379.00 − 335.00 = 44`, the bar.
+
+## What the logs show
+
+`AccessoryProbe` in `ios/RnkcRepro/AppDelegate.swift` logs every text input, the
+`inputAccessoryView` it holds, and how many React-managed views that container
+holds. Run `scripts/variant.sh stock log` for the extender's own lifecycle lines.
 
 ```sh
-# simulator
-xcrun simctl spawn booted log stream --predicate 'eventMessage CONTAINS "[probe]"'
-# device
 xcrun devicectl device process launch --device <udid> --console <bundle-id>
 ```
 
-`AccessoryProbe` (`ios/RnkcRepro/AppDelegate.swift`) logs every text input, the
-`inputAccessoryView` it holds, and how many React-managed views that container
-still has. It registers before any `KeyboardExtender` mounts, so it reports the
-state UIKit actually used. It also logs the reported keyboard frame height.
-
-## What happens
-
-Scenario `navigate-after-blur`: focus A, focus B, navigate to a screen with no
-extender, focus C.
+Focusing Input C on Settings (`evidence/leak.log`):
 
 ```
-A focused                 A inputAccessoryView=ModernContainerView@0x…600   keyboardHeight=379
-B focused                 A STILL holds it, B gets it too                   keyboardHeight=379
-navigate away             extender prepareForRecycle
-                          RCTTextInput prepareForRecycle field=…a00 accessory=0x…600
-                          RCTTextInput prepareForRecycle field=…500 accessory=0x…600
-focus C                   C@…500 inputAccessoryView=…@0x…600 contentViews=0 EMPTY-CONTAINER
-                          keyboardHeight=379          ← should be 335
+UITextField(Input C)@0x…a800 firstResponder=true inputAccessoryView=nil
+extender handleDidBeginEditing self=0x12303dc00 enabled=1 input=0x…a800
+keyboardHeight=379.00 (willShow)
+UITextField(Input C)@0x…a800 inputAccessoryView=ModernContainerView@0x…3000
+    frame=(0.0, 0.0, 393.0, 44.0) subviews=3 contentViews=3
 ```
 
-Three things go wrong in sequence:
+Read in order:
 
-1. **Focusing B does not clear A.** `detachInputAccessoryView` only ever looks at
-   `[UIResponder current]`, so A keeps pointing at the shared container.
-2. **Leaving the screen clears neither.** By the time the extender's
-   `prepareForRecycle` runs, `[UIResponder current]` is already `nil`, so the
-   detach clears nothing at all — both fields go into the recycle pool with the
-   accessory still attached. This is worse than "only clears the first responder".
-3. **RN hands the dirty view to the next screen.** On RN 0.81.6
-   `RCTTextInputComponentView.prepareForRecycle` does not clear
-   `inputAccessoryView` (fixed upstream in facebook/react-native#52825, landed for
-   0.82). C is given A's field, bar attached — so the keyboard frame is 44pt too
-   tall and C presents a container React has already emptied.
+- Input C starts clean — `inputAccessoryView=nil`.
+- The Editor's extender, still mounted and `enabled=1`, receives the notification
+  for C and attaches to it.
+- The container has `contentViews=3` and is 44pt tall: live content from a screen
+  the user has navigated away from.
+- The reported keyboard height is 379.00, and stays 379.00 after dismissing and
+  refocusing.
 
-## Which patch fixes what
+Input C is a different object from Input A, so no view recycling is involved.
 
-Both patches are in `RnkcRepro/patches-available/`; `scripts/variant.sh a|b|c|d`
-selects them. Measured on device, scenario `navigate-after-blur`:
+## The obvious fix does not address this
 
-| Build | Patches | Keyboard height on Settings | `EMPTY-CONTAINER` at refocus |
-| --- | --- | --- | --- |
-| a | neither | **379.00** | **yes** |
-| b | RN only (facebook/react-native#52825) | 335.00 | no |
-| c | RNKC only (detach from all attached inputs) | 335.00 | no |
-| d | both | 335.00 | no |
+Making `detachInputAccessoryView` clear from every input it has attached to,
+rather than only `[UIResponder current]`, is a real improvement — but it does not
+help here. Detach is never called: the extender is still enabled and is
+deliberately attaching.
 
-**Both patches independently fix both symptoms on this path.** That is not the
-split we expected — the RNKC patch alone is enough for the footer symptom, because
-clearing every attached input at detach means nothing dirty ever reaches the
-recycle pool in the first place.
-
-### A third defect neither patch fixes
-
-Scenario `drop-children` — set the extender's children to `null` while it stays
-`enabled`, then refocus:
+`scripts/variant.sh detach-patch log`, same sequence (`evidence/leak-with-detach-patch.log`):
 
 ```
-a (neither)   A and B both: contentViews=0 EMPTY-CONTAINER
-b (RN only)   A and B both: contentViews=0 EMPTY-CONTAINER
-c (RNKC only) A and B both: contentViews=0 EMPTY-CONTAINER
+extender handleDidBeginEditing self=0x116407100 enabled=1 input=0x…e300
+keyboardHeight=379.00 (willShow)
+UITextField(Input C)@0x…e300 inputAccessoryView=ModernContainerView@0x…4900
+    frame=(0.0, 0.0, 393.0, 44.0) subviews=3 contentViews=3
 ```
 
-No recycling is involved and `detachInputAccessoryView` is never called, because
-the extender is still enabled — so a patch to `detach` has nothing to act on.
-Emptying an extender's children leaves every input it has attached to presenting an
-empty container, indefinitely.
-
-## Scenarios
-
-`SCENARIO` in `App.tsx`:
-
-| Scenario | What it exercises |
-| --- | --- |
-| `navigate-after-blur` | Bug A + Bug B via recycling — the main one |
-| `navigate-control` | Baseline with no extender: correct height |
-| `drop-children` | Bug B with no recycling; the third defect above |
-| `toggle-enabled` | Bug B via `enabled` → `false` |
-| `unmount` | Extender unmounted; the accessory is never cleaned up at all |
-
-Each screen is keyed, which matters: without `key`, React reconciles the two
-screens in place and Input C reuses Input A's host view directly. That leaks too,
-but it never goes through the recycle pool, so it is not the path a navigation
-library takes.
+Unchanged.
 
 ## Environment
 
@@ -131,8 +116,4 @@ library takes.
 `react-native-reanimated` is a required peer of RNKC 1.22.4; npm resolves it to
 4.6.0, which needs RN 0.83–0.87, so it is pinned to 3.19.1.
 
-## Notes
-
-The footer reads `keyboardWillShow` rather than `keyboardWillChangeFrame` on
-purpose. An app positions its footer once, when the keyboard comes up; listening to
-every frame change re-reads the height after the emptied container has collapsed.
+Device builds need your own signing team; nothing team-specific is committed here.
