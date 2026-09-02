@@ -12,9 +12,15 @@ screen underneath stays mounted, so its extender is still alive and still
 observing. Focus an input on the screen pushed on top and the bar is attached to
 it, even though that screen has no `KeyboardExtender` at all.
 
-The keyboard frame then reports the extra bar height. Anything positioned off
-keyboard height — a fixed footer, a sticky button — sits that much too high, and
-stays there.
+The extender's bar is then drawn above the keyboard on that screen, and the
+keyboard frame reports its height. Anything positioned off keyboard height — a
+fixed footer, a sticky button — sits that much too high, and stays there.
+
+![The accessory bar rendered on a screen with no extender](evidence/leak.png)
+
+The screen's own subtitle reads "No KeyboardExtender on this screen." The pink bar
+below the footer belongs to the Editor screen underneath, which the user has
+navigated away from.
 
 ## Reproduction
 
@@ -32,9 +38,9 @@ npm run ios               # another — or build to a device from Xcode
 2. Push **Settings**, which has no extender. Editor stays mounted underneath.
 3. Focus **Input C** on Settings.
 
-The footer on Settings is positioned off the reported keyboard height. It sits a
-bar's height above the keyboard instead of flush against it, and stays wrong on
-every later focus.
+The extender's bar appears above the keyboard on Settings. The footer, positioned
+off the reported keyboard height, sits a bar's height above the keyboard instead of
+flush against it, and stays wrong on every later focus.
 
 Set `SCENARIO = 'control'` for the same navigation with the extender never
 mounted.
