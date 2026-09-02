@@ -1,0 +1,10 @@
+--- a/node_modules/react-native/React/Fabric/Mounting/ComponentViews/TextInput/RCTTextInputComponentView.mm
++++ b/node_modules/react-native/React/Fabric/Mounting/ComponentViews/TextInput/RCTTextInputComponentView.mm
+@@ -378,6 +378,7 @@
+   _lastStringStateWasUpdatedWith = nil;
+   _ignoreNextTextInputCall = NO;
+   _didMoveToWindow = NO;
++  _backedTextInputView.inputAccessoryView = nil;
+   [_backedTextInputView resignFirstResponder];
+ }
+ 

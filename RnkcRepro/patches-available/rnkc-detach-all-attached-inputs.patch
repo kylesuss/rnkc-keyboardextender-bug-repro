@@ -1,0 +1,70 @@
+--- a/node_modules/react-native-keyboard-controller/ios/views/KeyboardExtenderManager.mm
++++ b/node_modules/react-native-keyboard-controller/ios/views/KeyboardExtenderManager.mm
+@@ -62,6 +62,7 @@
+ @implementation KeyboardExtender {
+   UIView *_contentView;
+   UIView *_sharedInputAccessoryView;
++  NSHashTable<UIView<UITextInput> *> *_attachedInputs;
+   BOOL _isObserving;
+ #ifdef RCT_NEW_ARCH_ENABLED
+   RCTSurfaceTouchHandler *_touchHandler;
+@@ -92,6 +93,7 @@
+     _props = defaultProps;
+     _touchHandler = [RCTSurfaceTouchHandler new];
+     _contentView = [[UIView alloc] initWithFrame:CGRectZero];
++    _attachedInputs = [NSHashTable weakObjectsHashTable];
+   }
+ #else
+ - (instancetype)initWithBridge:(RCTBridge *)bridge
+@@ -100,6 +102,7 @@
+   if (self) {
+     _touchHandler = [[RCTTouchHandler alloc] initWithBridge:bridge];
+     _contentView = [[UIView alloc] initWithFrame:CGRectZero];
++    _attachedInputs = [NSHashTable weakObjectsHashTable];
+   }
+ #endif
+   [_touchHandler attachToView:_contentView];
+@@ -201,25 +204,30 @@
+ 
+   // Refresh input view to apply changes
+   [input reloadInputViews];
++
++  [_attachedInputs addObject:input];
+ }
+ 
+ - (void)detachInputAccessoryView
+ {
+-  // Remove the accessory view from the current text input
+-  UIResponder *firstResponder = [UIResponder current];
+-  if ([firstResponder isKindOfClass:[UITextField class]] ||
+-      [firstResponder isKindOfClass:[UITextView class]]) {
+-    UIView<UITextInput> *textInput = (UIView<UITextInput> *)firstResponder;
+-    if (textInput.inputAccessoryView == _sharedInputAccessoryView) {
+-      // Assign the inputAccessoryView
+-      if ([textInput isKindOfClass:[UITextField class]]) {
+-        ((UITextField *)textInput).inputAccessoryView = nil;
+-      } else if ([textInput isKindOfClass:[UITextView class]]) {
+-        ((UITextView *)textInput).inputAccessoryView = nil;
+-      }
+-      [textInput reloadInputViews];
++  // Clear the accessory from every input this extender attached it to, not just
++  // the current first responder — inputs that have already resigned keep pointing
++  // at the shared container otherwise.
++  for (UIView<UITextInput> *textInput in [_attachedInputs allObjects]) {
++    if (textInput.inputAccessoryView != _sharedInputAccessoryView) {
++      continue;
+     }
++
++    if ([textInput isKindOfClass:[UITextField class]]) {
++      ((UITextField *)textInput).inputAccessoryView = nil;
++    } else if ([textInput isKindOfClass:[UITextView class]]) {
++      ((UITextView *)textInput).inputAccessoryView = nil;
++    }
++
++    [textInput reloadInputViews];
+   }
++
++  [_attachedInputs removeAllObjects];
+ }
+ 
+ // MARK: touch handling

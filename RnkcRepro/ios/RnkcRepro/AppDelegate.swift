@@ -66,6 +66,30 @@ enum AccessoryProbe {
     ) { _ in
       dump(reason: "keyboardDidShow")
     }
+
+    // Bug A's probe: the keyboard frame height UIKit reports. A leaked accessory
+    // bar is counted into this, so anything an app positions off keyboard height
+    // ends up that much too high.
+    for name in [
+      UIResponder.keyboardWillShowNotification,
+      UIResponder.keyboardWillChangeFrameNotification,
+    ] {
+      NotificationCenter.default.addObserver(
+        forName: name, object: nil, queue: .main
+      ) { note in
+        guard
+          let frame = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey]
+            as? CGRect
+        else { return }
+
+        NSLog(
+          "[probe] keyboardHeight=%.2f (%@)",
+          frame.height,
+          name == UIResponder.keyboardWillShowNotification
+            ? "willShow" : "willChangeFrame"
+        )
+      }
+    }
   }
 
   static func dump(reason: String) {
@@ -87,6 +111,23 @@ enum AccessoryProbe {
     }
   }
 
+  /// Number of React-managed views inside an accessory container. The container is
+  /// a UIKit `UIInputView` subclass whose own `subviews` include UIKit chrome, so
+  /// counting those alone does not say whether the extender's content is still
+  /// there. Zero here means React has emptied the container.
+  private static func contentCount(of view: UIView) -> Int {
+    var count = 0
+
+    for subview in view.subviews {
+      if String(describing: type(of: subview)).hasPrefix("RCT") {
+        count += 1
+      }
+      count += contentCount(of: subview)
+    }
+
+    return count
+  }
+
   private static func walk(_ view: UIView, into lines: inout [String]) {
     let accessory: UIView?
     let label: String
@@ -104,15 +145,22 @@ enum AccessoryProbe {
 
     let accessoryDescription: String
     if let accessory {
+      // A container with no subviews is Bug B: React has emptied it, but this
+      // input is still presenting it. Tagged so it can be grepped for.
+      let contents = contentCount(of: accessory)
       accessoryDescription =
         "\(type(of: accessory))@\(Unmanaged.passUnretained(accessory).toOpaque()) "
-        + "frame=\(accessory.frame) subviews=\(accessory.subviews.count)"
+        + "frame=\(accessory.frame) subviews=\(accessory.subviews.count) "
+        + "contentViews=\(contents)"
+        + (contents == 0 ? " EMPTY-CONTAINER" : "")
     } else {
       accessoryDescription = "nil"
     }
 
     lines.append(
-      "\(label) firstResponder=\(view.isFirstResponder) inputAccessoryView=\(accessoryDescription)"
+      "\(label)@\(Unmanaged.passUnretained(view).toOpaque()) "
+        + "firstResponder=\(view.isFirstResponder) "
+        + "inputAccessoryView=\(accessoryDescription)"
     )
 
     for subview in view.subviews { walk(subview, into: &lines) }

@@ -1,0 +1,29 @@
+--- a/node_modules/react-native-keyboard-controller/ios/views/KeyboardExtenderManager.mm
++++ b/node_modules/react-native-keyboard-controller/ios/views/KeyboardExtenderManager.mm
+@@ -109,12 +109,14 @@
+ 
+ - (void)dealloc
+ {
++  NSLog(@"[probe] extender dealloc self=%p", self);
+   [self stopObserving];
+ }
+ 
+ #ifdef RCT_NEW_ARCH_ENABLED
+ - (void)prepareForRecycle
+ {
++  NSLog(@"[probe] extender prepareForRecycle self=%p", self);
+   // clean up local variables state
+   _enabled = NO;
+   [self detachInputAccessoryView];
+@@ -160,6 +162,11 @@
+ 
+ - (void)handleTextInputDidBeginEditing:(NSNotification *)notification
+ {
++  NSLog(
++      @"[probe] extender handleDidBeginEditing self=%p enabled=%d input=%p",
++      self,
++      self.enabled,
++      notification.object);
+   if (self.enabled) {
+     [self attachToTextInput:(UIView *)notification.object];
+   } else {

@@ -69,6 +69,13 @@ yarn-error.log
 # Claude Code local settings
 .claude/
 
+# Local device build output
+.build-device/
+
+# variant.sh working copies
+*.pristine
+*.orig
+
 # Yarn
 .yarn/*
 !.yarn/patches
