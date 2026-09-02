@@ -7,7 +7,7 @@ Minimal RN app reproducing, on a physical device, two separate defects around
 | --- | --- | --- |
 | Symptom | Keyboard frame reports 44pt too tall on a screen with no extender; anything positioned off keyboard height sits that much too high | An input presents a container the extender has already emptied |
 | Probe | `[probe] keyboardHeight=…` | `[probe] … EMPTY-CONTAINER` |
-| Reproduces | Yes, on device | Yes, on device and simulator |
+| Reproduced on | iPhone 16, iOS 26.5 | iPhone 16, iOS 26.5 |
 
 ## Run it
 
@@ -105,7 +105,6 @@ empty container, indefinitely.
 | Scenario | What it exercises |
 | --- | --- |
 | `navigate-after-blur` | Bug A + Bug B via recycling — the main one |
-| `navigate` | Same, but A is still focused when leaving; the extender's detach catches it, nothing leaks |
 | `navigate-control` | Baseline with no extender: correct height |
 | `drop-children` | Bug B with no recycling; the third defect above |
 | `toggle-enabled` | Bug B via `enabled` → `false` |
@@ -134,9 +133,6 @@ library takes.
 
 ## Notes
 
-- On the **simulator** Bug B reproduces in the logs, but nothing is ever visible —
-  the flash is cleared within the same run-loop turn, before any pixels commit.
-  Bug A needs a device. `evidence/` holds the earlier simulator captures.
-- The footer reads `keyboardWillShow` rather than `keyboardWillChangeFrame` on
-  purpose. An app positions its footer once, when the keyboard comes up; listening
-  to every frame change silently self-corrects and hides the bug.
+The footer reads `keyboardWillShow` rather than `keyboardWillChangeFrame` on
+purpose. An app positions its footer once, when the keyboard comes up; listening to
+every frame change re-reads the height after the emptied container has collapsed.
