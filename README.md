@@ -82,12 +82,24 @@ Read in order:
 
 Input C is a different object from Input A, so no view recycling is involved.
 
-## The obvious fix does not address this
+## Scope
+
+This repro isolates one mechanism: an enabled extender attaching to inputs it does
+not own, because its observer is registered with `object:nil`. No view recycling
+is involved and `detachInputAccessoryView` is never reached.
+
+Other ways an input can end up holding a stale accessory are real and are simply
+not what this repro exercises — in particular a Fabric input that is recycled while
+carrying an `inputAccessoryView`, and an input that resigns first responder before
+detach runs. Nothing here argues against fixing those; the sections below say only
+that fixing them does not fix this.
+
+## A detach-side fix does not address this
 
 Making `detachInputAccessoryView` clear from every input it has attached to,
-rather than only `[UIResponder current]`, is a real improvement — but it does not
-help here. Detach is never called: the extender is still enabled and is
-deliberately attaching.
+rather than only `[UIResponder current]`, is a real improvement and worth doing on
+its own merits — but it does not help here. Detach is never called: the extender is
+still enabled and is deliberately attaching.
 
 `scripts/variant.sh detach-patch log`, same sequence (`evidence/leak-with-detach-patch.log`):
 
