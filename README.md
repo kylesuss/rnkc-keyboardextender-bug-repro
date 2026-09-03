@@ -1,28 +1,14 @@
-# `KeyboardExtender` attaches its accessory to inputs on other screens
+# `detachInputAccessoryView` leaves the accessory on inputs that already resigned
 
 react-native-keyboard-controller **1.22.4**, iOS, new architecture.
 
-`KeyboardExtenderManager` observes `UITextFieldTextDidBeginEditingNotification`
-with `object:nil` — every text input in the process — and attaches its shared
-accessory container to whichever input begins editing, as long as `enabled` is
-`YES`.
+> This branch reproduces the detach cleanup bug. The `main` branch reproduces a
+> different one — an enabled extender attaching its bar to inputs on other screens
+> ([#1617](https://github.com/kirillzyusko/react-native-keyboard-controller/issues/1617)).
 
-Nothing scopes that to the extender's own screen. In a navigation stack the
-screen underneath stays mounted, so its extender is still alive and still
-observing. Focus an input on the screen pushed on top and the bar is attached to
-it, even though that screen has no `KeyboardExtender` at all.
+[`detachInputAccessoryView`](https://github.com/kirillzyusko/react-native-keyboard-controller/blob/af130ca4f9d77061ca098dd4aaec13dda3d5b11f/ios/views/KeyboardExtenderManager.mm#L206-L223) clears the shared accessory from `[UIResponder current]` and nothing else, and [`attachInputAccessoryViewTo:`](https://github.com/kirillzyusko/react-native-keyboard-controller/blob/af130ca4f9d77061ca098dd4aaec13dda3d5b11f/ios/views/KeyboardExtenderManager.mm#L188-L204) keeps no record of which inputs it assigned it to. An input that has already resigned first responder keeps pointing at the container after a detach that believed it cleaned up.
 
-The extender's bar is then drawn above the keyboard on that screen, and the
-keyboard frame reports its height. Anything positioned off keyboard height — a
-fixed footer, a sticky button — sits that much too high, and stays there.
-
-![The accessory bar rendered on a screen with no extender](evidence/leak.png)
-
-The screen's own subtitle reads "No KeyboardExtender on this screen." The pink bar
-below the footer belongs to the Editor screen underneath, which the user has
-navigated away from.
-
-## Reproduction
+## Run it
 
 ```sh
 cd RnkcRepro
@@ -32,91 +18,56 @@ npm start                 # one shell
 npm run ios               # another — or build to a device from Xcode
 ```
 
-`App.tsx` plays the sequence by itself ~1.5s after launch:
-
-1. Focus **Input A** on the Editor screen, which has a `KeyboardExtender`.
-2. Push **Settings**, which has no extender. Editor stays mounted underneath.
-3. Focus **Input C** on Settings.
-
-The extender's bar appears above the keyboard on Settings. The footer, positioned
-off the reported keyboard height, sits a bar's height above the keyboard instead of
-flush against it, and stays wrong on every later focus.
-
-Set `SCENARIO = 'control'` for the same navigation with the extender never
-mounted.
-
-## Measurements
-
-iPhone 16, iOS 26.5. Bar is 44pt.
-
-| | Reported keyboard height |
-| --- | --- |
-| `control` — no extender mounted | **335.00** |
-| `leak` — extender mounted on the screen below | **379.00** |
-
-`379.00 − 335.00 = 44`, the bar.
-
-## What the logs show
-
-`AccessoryProbe` in `ios/RnkcRepro/AppDelegate.swift` logs every text input, the
-`inputAccessoryView` it holds, and how many React-managed views that container
-holds. Run `scripts/variant.sh stock log` for the extender's own lifecycle lines.
+The app plays the sequence itself ~1.5s after launch. Watch the probe output:
 
 ```sh
+# simulator
+xcrun simctl spawn booted log stream --predicate 'eventMessage CONTAINS "[probe]"'
+# device
 xcrun devicectl device process launch --device <udid> --console <bundle-id>
 ```
 
-Focusing Input C on Settings (`evidence/leak.log`):
+`AccessoryProbe` in `ios/RnkcRepro/AppDelegate.swift` logs, for every text field, the `inputAccessoryView` it holds and how many React-managed views that container still has. It registers before any `KeyboardExtender` mounts, so it reports the state UIKit actually used.
+
+For the `extender handleDidBeginEditing …` lines, run `scripts/variant.sh stock log` first — that adds a few `NSLog`s to the library and changes no behaviour.
+
+## The sequence
+
+One screen, two inputs, one extender. No navigation, no view recycling.
+
+1. Focus **A**. The bar attaches to A.
+2. Focus **B** without dismissing the keyboard. B gets the bar; A has resigned but still points at the same container.
+3. Set `enabled` to `false`. `detachInputAccessoryView` finds only B and clears it. **A is untouched.**
+4. Focus **A** again. A presents the container the extender believes it detached.
+
+From `evidence/detach.log`, iPhone 16 / iOS 26.5:
 
 ```
-UITextField(Input C)@0x…a800 firstResponder=true inputAccessoryView=nil
-extender handleDidBeginEditing self=0x12303dc00 enabled=1 input=0x…a800
-keyboardHeight=379.00 (willShow)
-UITextField(Input C)@0x…a800 inputAccessoryView=ModernContainerView@0x…3000
-    frame=(0.0, 0.0, 393.0, 44.0) subviews=3 contentViews=3
+1: focus A     A inputAccessoryView=ModernContainerView@0x…bc00
+               B inputAccessoryView=nil
+
+2: focus B     A inputAccessoryView=ModernContainerView@0x…bc00   (resigned, still holding)
+               B inputAccessoryView=ModernContainerView@0x…bc00
+
+3: enabled=NO  A inputAccessoryView=ModernContainerView@0x…bc00   <-- missed
+               B inputAccessoryView=nil                           <-- cleared
+
+4: focus A     A inputAccessoryView=ModernContainerView@0x…bc00
+               extender handleDidBeginEditing enabled=0
+               A inputAccessoryView=nil                           <-- cleared here instead
 ```
 
-Read in order:
+Step 3 is the bug: detach ran and left A holding the container.
 
-- Input C starts clean — `inputAccessoryView=nil`.
-- The Editor's extender, still mounted and `enabled=1`, receives the notification
-  for C and attaches to it.
-- The container has `contentViews=3` and is 44pt tall: live content from a screen
-  the user has navigated away from.
-- The reported keyboard height is 379.00, and stays 379.00 after dismissing and
-  refocusing.
+## On visibility
 
-Input C is a different object from Input A, so no view recycling is involved.
+With a single extender there is usually **no visible symptom**, and this repro does not produce one. At step 4 the extender's own `handleTextInputDidBeginEditing:` takes the disabled path and clears A within the same run loop turn, before the keyboard lays out — the reported keyboard height at step 4 is correct.
 
-## Scope
+It stops being harmless with two extenders mounted at once, where the input holding the bar is not the current responder at the moment one of them is disabled. That case is not modelled here; this repro isolates the detach itself.
 
-This repro isolates one mechanism: an enabled extender attaching to inputs it does
-not own, because its observer is registered with `object:nil`. No view recycling
-is involved and `detachInputAccessoryView` is never reached.
+## The candidate fix
 
-Other ways an input can end up holding a stale accessory are real and are simply
-not what this repro exercises — in particular a Fabric input that is recycled while
-carrying an `inputAccessoryView`, and an input that resigns first responder before
-detach runs. Nothing here argues against fixing those; the sections below say only
-that fixing them does not fix this.
-
-## A detach-side fix does not address this
-
-Making `detachInputAccessoryView` clear from every input it has attached to,
-rather than only `[UIResponder current]`, is a real improvement and worth doing on
-its own merits — but it does not help here. Detach is never called: the extender is
-still enabled and is deliberately attaching.
-
-`scripts/variant.sh detach-patch log`, same sequence (`evidence/leak-with-detach-patch.log`):
-
-```
-extender handleDidBeginEditing self=0x116407100 enabled=1 input=0x…e300
-keyboardHeight=379.00 (willShow)
-UITextField(Input C)@0x…e300 inputAccessoryView=ModernContainerView@0x…4900
-    frame=(0.0, 0.0, 393.0, 44.0) subviews=3 contentViews=3
-```
-
-Unchanged.
+`scripts/variant.sh detach-patch` applies the change described in the issue: track attached inputs in a weak `NSHashTable` and clear from all of them on detach. Re-run and step 3 clears both A and B.
 
 ## Environment
 
@@ -131,7 +82,6 @@ Unchanged.
 | react-native-keyboard-controller | 1.22.4 |
 | react-native-reanimated | 3.19.1 |
 
-`react-native-reanimated` is a required peer of RNKC 1.22.4; npm resolves it to
-4.6.0, which needs RN 0.83–0.87, so it is pinned to 3.19.1.
+`react-native-reanimated` is a required peer of RNKC 1.22.4; npm resolves it to 4.6.0, which needs RN 0.83–0.87, so it is pinned to 3.19.1.
 
 Device builds need your own signing team; nothing team-specific is committed here.
