@@ -1,12 +1,6 @@
 # `detachInputAccessoryView` leaves the accessory on inputs that already resigned
 
-react-native-keyboard-controller **1.22.4**, iOS, new architecture.
-
-> This branch reproduces the detach cleanup bug. The `main` branch reproduces a
-> different one — an enabled extender attaching its bar to inputs on other screens
-> ([#1617](https://github.com/kirillzyusko/react-native-keyboard-controller/issues/1617)).
-
-[`detachInputAccessoryView`](https://github.com/kirillzyusko/react-native-keyboard-controller/blob/af130ca4f9d77061ca098dd4aaec13dda3d5b11f/ios/views/KeyboardExtenderManager.mm#L206-L223) clears the shared accessory from `[UIResponder current]` and nothing else, and [`attachInputAccessoryViewTo:`](https://github.com/kirillzyusko/react-native-keyboard-controller/blob/af130ca4f9d77061ca098dd4aaec13dda3d5b11f/ios/views/KeyboardExtenderManager.mm#L188-L204) keeps no record of which inputs it assigned it to. An input that has already resigned first responder keeps pointing at the container after a detach that believed it cleaned up.
+react-native-keyboard-controller **1.22.4**, React Native 0.81.6, iOS, new architecture.
 
 ## Run it
 
@@ -14,11 +8,12 @@ react-native-keyboard-controller **1.22.4**, iOS, new architecture.
 cd RnkcRepro
 npm install
 (cd ios && pod install)
-npm start                 # one shell
-npm run ios               # another — or build to a device from Xcode
+scripts/variant.sh stock log      # adds the probe NSLogs, no behaviour change
+npm start                          # leave running
+npm run ios                        # or open ios/RnkcRepro.xcworkspace and Run
 ```
 
-The app plays the sequence itself ~1.5s after launch. Watch the probe output:
+Watch the probe output while it runs:
 
 ```sh
 # simulator
@@ -27,20 +22,14 @@ xcrun simctl spawn booted log stream --predicate 'eventMessage CONTAINS "[probe]
 xcrun devicectl device process launch --device <udid> --console <bundle-id>
 ```
 
-`AccessoryProbe` in `ios/RnkcRepro/AppDelegate.swift` logs, for every text field, the `inputAccessoryView` it holds and how many React-managed views that container still has. It registers before any `KeyboardExtender` mounts, so it reports the state UIKit actually used.
+Nothing to edit. The app drives itself ~1.5s after launch. One screen, two inputs, one extender — no navigation, no view recycling:
 
-For the `extender handleDidBeginEditing …` lines, run `scripts/variant.sh stock log` first — that adds a few `NSLog`s to the library and changes no behaviour.
+1. Focuses **A**. The bar attaches to A.
+2. Focuses **B** without dismissing the keyboard. B gets the bar; A has resigned but still points at the same container.
+3. Sets `enabled` to `false`. `detachInputAccessoryView` finds only B and clears it. **A is untouched.**
+4. Focuses **A** again. A presents the container the extender believes it detached.
 
-## The sequence
-
-One screen, two inputs, one extender. No navigation, no view recycling.
-
-1. Focus **A**. The bar attaches to A.
-2. Focus **B** without dismissing the keyboard. B gets the bar; A has resigned but still points at the same container.
-3. Set `enabled` to `false`. `detachInputAccessoryView` finds only B and clears it. **A is untouched.**
-4. Focus **A** again. A presents the container the extender believes it detached.
-
-From `evidence/detach.log`, iPhone 16 / iOS 26.5:
+**What to look for:** step 3 in the log. Detach ran, and A is still holding the container.
 
 ```
 1: focus A     A inputAccessoryView=ModernContainerView@0x…bc00
@@ -57,24 +46,38 @@ From `evidence/detach.log`, iPhone 16 / iOS 26.5:
                A inputAccessoryView=nil                           <-- cleared here instead
 ```
 
-Step 3 is the bug: detach ran and left A holding the container.
+Full output in `evidence/detach.log`, captured on an iPhone 16 / iOS 26.5.
+
+**There is nothing to see on screen** — this bug is only visible in the log. See [On visibility](#on-visibility).
+
+## The cause
+
+[`detachInputAccessoryView`](https://github.com/kirillzyusko/react-native-keyboard-controller/blob/af130ca4f9d77061ca098dd4aaec13dda3d5b11f/ios/views/KeyboardExtenderManager.mm#L206-L223) clears the shared accessory from `[UIResponder current]` and nothing else. [`attachInputAccessoryViewTo:`](https://github.com/kirillzyusko/react-native-keyboard-controller/blob/af130ca4f9d77061ca098dd4aaec13dda3d5b11f/ios/views/KeyboardExtenderManager.mm#L188-L204) keeps no record of which inputs it assigned it to, so there is nothing for detach to walk.
+
+It is called from [`updateEnabledState:`](https://github.com/kirillzyusko/react-native-keyboard-controller/blob/af130ca4f9d77061ca098dd4aaec13dda3d5b11f/ios/views/KeyboardExtenderManager.mm#L284), [`handleTextInputDidBeginEditing:`](https://github.com/kirillzyusko/react-native-keyboard-controller/blob/af130ca4f9d77061ca098dd4aaec13dda3d5b11f/ios/views/KeyboardExtenderManager.mm#L166) and [`prepareForRecycle`](https://github.com/kirillzyusko/react-native-keyboard-controller/blob/af130ca4f9d77061ca098dd4aaec13dda3d5b11f/ios/views/KeyboardExtenderManager.mm#L120). In each, the input holding the accessory may not be the current responder.
+
+`AccessoryProbe` in `ios/RnkcRepro/AppDelegate.swift` is what produces the `[probe]` lines. It logs, for every text field, the `inputAccessoryView` it holds and how many React-managed views that container still has, and registers before any `KeyboardExtender` mounts so it reports the state UIKit actually used.
 
 ## On visibility
 
-With a single extender there is usually **no visible symptom**, and this repro does not produce one. At step 4 the extender's own `handleTextInputDidBeginEditing:` takes the disabled path and clears A within the same run loop turn, before the keyboard lays out — the reported keyboard height at step 4 is correct.
+With a single extender there is **no visible symptom**, and this repro does not produce one. At step 4 the extender's own `handleTextInputDidBeginEditing:` takes the disabled path and clears A within the same run loop turn, before the keyboard lays out — the reported keyboard height at step 4 is correct.
 
 It stops being harmless with two extenders mounted at once, where the input holding the bar is not the current responder at the moment one of them is disabled. That case is not modelled here; this repro isolates the detach itself.
 
 ## The candidate fix
 
-`scripts/variant.sh detach-patch` applies the change described in the issue: track attached inputs in a weak `NSHashTable` and clear from all of them on detach.
+```sh
+scripts/variant.sh detach-patch log
+```
 
-Re-running the same sequence with it applied, step 3 now clears both (`evidence/detach-with-patch.log`):
+Tracks attached inputs in a weak `NSHashTable` and clears from all of them on detach. Rebuild and re-run: step 3 now clears both (`evidence/detach-with-patch.log`).
 
 ```
 3: enabled=NO  A inputAccessoryView=nil
                B inputAccessoryView=nil
 ```
+
+`scripts/variant.sh stock` puts it back.
 
 ## Environment
 
