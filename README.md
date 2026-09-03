@@ -2,6 +2,12 @@
 
 react-native-keyboard-controller **1.22.4**, iOS, new architecture.
 
+> This branch reproduces [#1617](https://github.com/kirillzyusko/react-native-keyboard-controller/issues/1617).
+> A second, unrelated defect — `detachInputAccessoryView` leaving the accessory on
+> inputs that already resigned — is on the
+> [`detach-cleanup`](https://github.com/kylesuss/rnkc-keyboardextender-bug-repro/tree/detach-cleanup)
+> branch. Neither needs any code edited to reproduce; check out the branch and run.
+
 `KeyboardExtenderManager` observes `UITextFieldTextDidBeginEditingNotification`
 with `object:nil` — every text input in the process — and attaches its shared
 accessory container to whichever input begins editing, as long as `enabled` is
