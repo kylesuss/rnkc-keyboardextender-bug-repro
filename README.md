@@ -67,7 +67,14 @@ It stops being harmless with two extenders mounted at once, where the input hold
 
 ## The candidate fix
 
-`scripts/variant.sh detach-patch` applies the change described in the issue: track attached inputs in a weak `NSHashTable` and clear from all of them on detach. Re-run and step 3 clears both A and B.
+`scripts/variant.sh detach-patch` applies the change described in the issue: track attached inputs in a weak `NSHashTable` and clear from all of them on detach.
+
+Re-running the same sequence with it applied, step 3 now clears both (`evidence/detach-with-patch.log`):
+
+```
+3: enabled=NO  A inputAccessoryView=nil
+               B inputAccessoryView=nil
+```
 
 ## Environment
 
